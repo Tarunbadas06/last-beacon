@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LAST BEACON — Pathfinding Tests</title>
+  <style>
+    body { font-family: 'Courier New', monospace; background: #050a0e; color: #e0e0e0; padding: 24px; }
+    h1 { color: #00e5ff; margin-bottom: 24px; }
+    .test { border: 1px solid #1e3a4a; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+    .pass { border-color: #69f0ae; }
+    .fail { border-color: #ff1744; }
+    .test-name { font-weight: bold; font-size: 0.9rem; margin-bottom: 4px; }
+    .test-result { font-size: 0.8rem; }
+    .pass .test-result { color: #69f0ae; }
+    .fail .test-result { color: #ff1744; }
+    .test-detail { font-size: 0.72rem; color: #7db8cc; margin-top: 4px; }
+    .summary { background: #0a1520; border: 2px solid #00e5ff; border-radius: 10px; padding: 16px; margin-top: 24px; }
+    .summary h2 { color: #00e5ff; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<h1>⚡ LAST BEACON — Automated Pathfinding Tests</h1>
+<div id="test-results"></div>
+<div class="summary" id="summary"></div>
+
+<script src="graph.js"></script>
+<script src="state.js"></script>
+<script>
+'use strict';
+
+const results = [];
+
+function test(name, fn) {
+  try {
+    const detail = fn();
+    results.push({ name, pass: true, detail });
+  } catch (e) {
+    results.push({ name, pass: false, detail: e.message });
+  }
+}
+
+function assert(condition, msg) {
+  if (!condition) throw new Error(msg || 'Assertion failed');
+}
+
+// ─── Helper: fresh graph ────────────────────────────────────────────────────
+function freshGraph() {
+  return new window.LastBeacon.Graph(
+    window.LastBeacon.CITY_NODES.map(n => ({...n})),
+    window.LastBeacon.CITY_EDGES.map(e => ({...e}))
+  );
+}
+
+function freshState() {
+  localStorage.clear();
+  return new window.LastBeacon.AppState();
+}
+
+// ─── TEST 1: Initial route reaches the beacon ───────────────────────────────
+test('1. Initial route reaches the Beacon (S → B)', () => {
+  const g = freshGraph();
+  const r = g.dijkstra('S', 'B');
+  assert(r.path !== null, 'No path found from S to B');
+  assert(r.path[0] === 'S', `Path should start at S, got ${r.path[0]}`);
+  assert(r.path[r.path.length - 1] === 'B', `Path should end at B, got ${r.path[r.path.length - 1]}`);
+  assert(r.cost < Infinity, 'Route cost should be finite');
+  return `Path: ${r.path.join('→')} | Cost: ${Math.round(r.cost)}`;
+});
+
+// ─── TEST 2: Blocking a road on active route triggers reroute ────────────────
+test('2. Blocking a road on the active route immediately produces a valid alternative', () => {
+  const g = freshGraph();
+  const r1 = g.dijkstra('S', 'B');
+  assert(r1.path, 'Initial route must exist');
+
+  // Block the first edge on the route
+  const firstEdgeId = r1.edgePath[0];
+  g.blockEdge(firstEdgeId);
+
+  const r2 = g.dijkstra('S', 'B');
+  assert(r2.path !== null, 'After blocking first edge, alternative route must exist');
+  assert(!r2.edgePath.includes(firstEdgeId), 'Alternative route must not include the blocked edge');
+  return `Blocked: ${firstEdgeId}. New path: ${r2.path.join('→')}`;
+});
+
+// ─── TEST 3: Alternative never contains blocked roads ───────────────────────
+test('3. Alternative route never passes through blocked roads', () => {
+  const g = freshGraph();
+  // Block several edges
+  ['e1','e2','e4'].forEach(eid => g.blockEdge(eid));
+  const r = g.dijkstra('S', 'B');
+  if (r.path === null) return 'No route (acceptable — all paths may be blocked)';
+  const hasBlocked = r.edgePath.some(eid => g.edges[eid].blocked);
+  assert(!hasBlocked, `Route contains a blocked edge: ${r.edgePath.filter(eid => g.edges[eid].blocked)}`);
+  return `Route: ${r.path.join('→')} — no blocked edges confirmed`;
+});
+
+// ─── TEST 4: Blocking the alternative triggers another recalculation ─────────
+test('4. Blocking the alternative route triggers another recalculation', () => {
+  const g = freshGraph();
+  const r1 = g.dijkstra('S', 'B');
+  assert(r1.path, 'Initial route must exist');
+
+  g.blockEdge(r1.edgePath[0]);
+  const r2 = g.dijkstra('S', 'B');
+  assert(r2.path, 'First alternative must exist');
+
+  g.blockEdge(r2.edgePath[0]);
+  const r3 = g.dijkstra('S', 'B');
+  const msg = r3.path ? `Third route: ${r3.path.join('→')}` : 'No third route (all alternatives exhausted)';
+  // Either a valid new route or null — both are valid outcomes
+  if (r3.path) {
+    const allBlocked = [r1.edgePath[0], r2.edgePath[0]];
+    assert(!r3.edgePath.some(e => allBlocked.includes(e)), 'Third route must avoid both blocked edges');
+  }
+  return msg;
+});
+
+// ─── TEST 5: Blocking an irrelevant road does not break current route ────────
+test('5. Blocking an irrelevant road does not break the current route', () => {
+  const g = freshGraph();
+  const r1 = g.dijkstra('S', 'B');
+  assert(r1.path, 'Initial route must exist');
+
+  // Find an edge NOT on the current route
+  const irrelevantEdge = Object.keys(g.edges).find(eid => !r1.edgePath.includes(eid));
+  assert(irrelevantEdge, 'Must find an edge not on the route');
+
+  g.blockEdge(irrelevantEdge);
+  const r2 = g.dijkstra('S', 'B');
+  assert(r2.path !== null, 'Route must still exist after irrelevant block');
+  assert(r2.path.join('→') === r1.path.join('→'), 
+    `Route changed unexpectedly! Before: ${r1.path.join('→')} After: ${r2.path.join('→')}`);
+  return `Blocked irrelevant edge ${irrelevantEdge}. Route unchanged: ${r1.path.join('→')}`;
+});
+
+// ─── TEST 6: Blocking all paths produces no-route warning ────────────────────
+test('6. Blocking every possible path produces a no-route result (null path)', () => {
+  const g = freshGraph();
+  // Block all edges adjacent to beacon
+  Object.values(g.edges).forEach(e => {
+    if (e.from === 'B' || e.to === 'B') g.blockEdge(e.id);
+  });
+  const r = g.dijkstra('S', 'B');
+  assert(r.path === null, `Expected null path when all beacon approaches blocked, got: ${r.path}`);
+  assert(r.cost === Infinity, 'Cost should be Infinity when no route exists');
+  return 'No route correctly detected when beacon is surrounded. path=null ✓';
+});
+
+// ─── TEST 7: Reopening a road allows reconsidering routes ────────────────────
+test('7. Reopening a blocked road allows the algorithm to reconsider routes', () => {
+  const g = freshGraph();
+  // Block enough to force a specific detour
+  ['e23','e24'].forEach(eid => g.blockEdge(eid)); // block both beacon approaches via E1,E2
+  
+  const r1 = g.dijkstra('S', 'B');
+  assert(r1.path === null, 'Blocking E1→B and E2→B should yield no route');
+
+  g.unblockEdge('e24');
+  const r2 = g.dijkstra('S', 'B');
+  assert(r2.path !== null, 'Unblocking e24 should restore a route');
+  assert(!r2.edgePath.includes('e23'), 'Route must avoid still-blocked e23');
+  return `After unblock: ${r2.path.join('→')}`;
+});
+
+// ─── TEST 8: Route requiring more resources than available ────────────────────
+test('8. A route requiring more resources than available is flagged infeasible', () => {
+  localStorage.clear();
+  const state = new window.LastBeacon.AppState();
+  // Drain inventory to zero
+  state.inventory.food      = 0;
+  state.inventory.water     = 0;
+  state.inventory.batteries = 0;
+  state.recalcRoute('Resource depletion test');
+  assert(state.route !== null, 'Route must exist even if infeasible');
+  assert(state.route.feasible === false, 
+    `Route should be infeasible with empty resources, got feasible=${state.route.feasible}`);
+  return `Route exists but feasible=${state.route.feasible} (correct — no resources)`;
+});
+
+// ─── TEST 9: Threat level change updates route selection ─────────────────────
+test('9. Changing threat levels can update the best route', () => {
+  const g = freshGraph();
+  const r1 = g.dijkstra('S', 'B');
+  const originalPath = r1.path.join('→');
+
+  // Massively increase threat on every edge of the current route
+  r1.edgePath.forEach(eid => g.setThreat(eid, 10));
+
+  const r2 = g.dijkstra('S', 'B');
+  // Route may or may not change (depends on graph topology), but it must still be valid
+  assert(r2.path !== null, 'A valid route must still exist after threat change');
+  const changed = r2.path.join('→') !== originalPath;
+  return `Original: ${originalPath}. After threat↑: ${r2.path.join('→')}. Changed: ${changed}`;
+});
+
+// ─── TEST 10: Refreshing preserves simulation state ──────────────────────────
+test('10. LocalStorage serialisation preserves graph blockages across save/restore', () => {
+  const g1 = new window.LastBeacon.Graph(
+    window.LastBeacon.CITY_NODES.map(n => ({...n})),
+    window.LastBeacon.CITY_EDGES.map(e => ({...e}))
+  );
+  g1.blockEdge('e1');
+  g1.blockEdge('e5');
+  g1.setThreat('e10', 9);
+
+  const snapshot = g1.serialise();
+
+  const g2 = new window.LastBeacon.Graph(
+    window.LastBeacon.CITY_NODES.map(n => ({...n})),
+    window.LastBeacon.CITY_EDGES.map(e => ({...e}))
+  );
+  g2.restore(snapshot);
+
+  assert(g2.edges['e1'].blocked === true,  'e1 should be blocked after restore');
+  assert(g2.edges['e5'].blocked === true,  'e5 should be blocked after restore');
+  assert(g2.edges['e10'].threat === 9,     'e10 threat should be 9 after restore');
+  assert(g2.edges['e2'].blocked === false, 'e2 should be unblocked after restore');
+  return 'Graph state serialised and restored correctly ✓';
+});
+
+// ─── TEST 11: Dijkstra never selects a blocked edge ─────────────────────────
+test('11. Dijkstra never selects a blocked edge, even if it shortens the route', () => {
+  const g = freshGraph();
+  // Block the cheapest-looking short route via North
+  g.blockEdge('e1'); // S→N1 (140, t:2)
+  // The algorithm must route via Central or South without using e1
+  const r = g.dijkstra('S', 'B');
+  assert(r.path !== null, 'Route must exist without e1');
+  assert(!r.edgePath.includes('e1'), 'Blocked edge e1 must not appear in route');
+  return `Route without e1: ${r.path.join('→')}`;
+});
+
+// ─── TEST 12: Route from mid-point, not always from S ───────────────────────
+test('12. Dijkstra correctly finds route from a mid-point (e.g. C2 → B)', () => {
+  const g = freshGraph();
+  const r = g.dijkstra('C2', 'B');
+  assert(r.path !== null, 'Route from C2 to B must exist');
+  assert(r.path[0] === 'C2', `Path must start at C2, got ${r.path[0]}`);
+  assert(r.path[r.path.length - 1] === 'B', `Path must end at B`);
+  return `C2→B path: ${r.path.join('→')} | Cost: ${Math.round(r.cost)}`;
+});
+
+// ─── Render Results ─────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('test-results');
+  let passed = 0, failed = 0;
+
+  results.forEach(r => {
+    const div = document.createElement('div');
+    div.className = `test ${r.pass ? 'pass' : 'fail'}`;
+    div.innerHTML = `
+      <div class="test-name">${r.pass ? '✅' : '❌'} ${r.name}</div>
+      <div class="test-result">${r.pass ? 'PASSED' : 'FAILED'}</div>
+      <div class="test-detail">${r.detail || ''}</div>
+    `;
+    container.appendChild(div);
+    if (r.pass) passed++; else failed++;
+  });
+
+  const summary = document.getElementById('summary');
+  summary.innerHTML = `
+    <h2>Test Summary</h2>
+    <p>✅ Passed: <strong>${passed}</strong> &nbsp; ❌ Failed: <strong>${failed}</strong> &nbsp; Total: <strong>${results.length}</strong></p>
+    <p style="margin-top:8px;font-size:0.8rem;color:${failed === 0 ? '#69f0ae' : '#ff1744'}">
+      ${failed === 0 ? '🏆 All tests passed! Pathfinding engine is correct.' : `⚠ ${failed} test(s) failed. See details above.`}
+    </p>
+  `;
+});
+</script>
+</body>
+</html>
