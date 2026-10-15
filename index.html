@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="LAST BEACON — Offline Survival Coordination System. Navigate a zombie-infested city to reach the evacuation beacon with automatic route recalculation.">
+  <title>LAST BEACON — Offline Survival Coordination System</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#050a0e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="notification" class="notification" role="alert" aria-live="assertive"></div>
+
+<div class="app-shell">
+
+  <!-- ─── Header ──────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="beacon-pulse" title="Beacon signal active"></div>
+      <div>
+        <div class="header-title">⚡ LAST BEACON</div>
+        <div class="header-sub">OFFLINE SURVIVAL COORDINATION SYSTEM</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="mission-progress-wrap">
+        <span class="mission-progress-label">Mission</span>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-bar" style="width:0%"></div>
+        </div>
+        <span class="progress-pct" id="progress-text">0%</span>
+      </div>
+      <div class="sim-time-display">🕐 T+<span id="sim-time">00:00</span></div>
+    </div>
+  </header>
+
+  <!-- ─── Main Grid ────────────────────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- ─── Left Panel ─────────────────────────────────────────────────────── -->
+    <aside class="panel" id="left-panel">
+
+      <div class="panel-title">🧑‍🤝‍🧑 Survivors</div>
+
+      <!-- Aarav Card -->
+      <div class="card character-card">
+        <div class="char-header">
+          <div class="char-avatar">🧑</div>
+          <div>
+            <div class="char-name">Aarav</div>
+            <div class="char-status">STATUS: ACTIVE</div>
+          </div>
+        </div>
+        <div class="health-label">
+          <span>Health</span>
+          <span id="health-aarav">100%</span>
+        </div>
+        <div class="health-track">
+          <div class="health-bar bar-normal" id="health-bar-aarav" style="width:100%"></div>
+        </div>
+      </div>
+
+      <!-- Mira Card -->
+      <div class="card character-card">
+        <div class="char-header">
+          <div class="char-avatar">👩</div>
+          <div>
+            <div class="char-name">Mira</div>
+            <div class="char-status">STATUS: ACTIVE</div>
+          </div>
+        </div>
+        <div class="health-label">
+            <span>Health</span>
+            <span id="health-mira">100%</span>
+          </div>
+        <div class="health-track">
+          <div class="health-bar bar-normal" id="health-bar-mira" style="width:100%"></div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+      <div class="panel-title">🎒 Inventory</div>
+
+      <!-- Inventory Grid -->
+      <div class="inv-grid">
+        <div class="inv-item">
+          <div class="inv-name">🍖 Food</div>
+          <div class="inv-val" id="inv-food">20</div>
+          <div class="inv-track"><div class="inv-bar bar-normal" id="bar-food" style="width:66%"></div></div>
+        </div>
+        <div class="inv-item">
+          <div class="inv-name">💧 Water</div>
+          <div class="inv-val" id="inv-water">20</div>
+          <div class="inv-track"><div class="inv-bar bar-normal" id="bar-water" style="width:66%"></div></div>
+        </div>
+        <div class="inv-item">
+          <div class="inv-name">💊 Medicine</div>
+          <div class="inv-val" id="inv-medicine">10</div>
+          <div class="inv-track"><div class="inv-bar bar-normal" id="bar-medicine" style="width:66%"></div></div>
+        </div>
+        <div class="inv-item">
+          <div class="inv-name">🔋 Batteries</div>
+          <div class="inv-val" id="inv-batteries">8</div>
+          <div class="inv-track"><div class="inv-bar bar-normal" id="bar-batteries" style="width:66%"></div></div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+      <div class="panel-title">🕹 Simulation</div>
+
+      <div class="sim-actions">
+        <!-- Threat sim toggle: label updated by JS -->
+        <button id="sim-toggle-btn" class="btn btn-warn btn-full">⏸ Pause Threat Sim</button>
+        <button id="advance-btn" class="btn btn-primary btn-full">⏭ Manual Step</button>
+        <button id="reset-btn"   class="btn btn-ghost btn-full">↺ Reset Simulation</button>
+      </div>
+
+    </aside><!-- /left-panel -->
+
+    <!-- ─── Map Area ─────────────────────────────────────────────────────── -->
+    <main class="map-area">
+      <div class="map-toolbar">
+        <span class="map-toolbar-title">City Map</span>
+        <div class="map-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#00e5ff"></span>Aarav</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ab47bc"></span>Mira</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ff6b35"></span>Beacon</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#69f0ae"></span>Safe Zone</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ffd740"></span>Cache</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ef5350"></span>Infected</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#b0bec5"></span>Junction</span>
+          <span class="legend-item"><span style="display:inline-block;width:22px;height:3px;background:#00e5ff;border-radius:2px;"></span>Aarav Route</span>
+          <span class="legend-item"><span style="display:inline-block;width:22px;height:3px;background:#ce93d8;border-radius:2px;border-top:2px dashed #ce93d8;background:none"></span>Mira Route</span>
+          <span class="legend-item"><span style="display:inline-block;width:22px;height:3px;background:#ff1744;border-radius:2px;border-top:2px dashed #ff1744;background:none"></span>🧟 Blocked</span>
+        </div>
+      </div>
+
+      <div class="map-svg-wrap">
+        <svg id="city-map" xmlns="http://www.w3.org/2000/svg" aria-label="Interactive city map"></svg>
+        <div class="map-hint">Click any road on the map to select it, then use the controls below</div>
+      </div>
+    </main><!-- /map-area -->
+
+    <!-- ─── Right Panel ─────────────────────────────────────────────────── -->
+    <aside class="right-panel">
+      <div class="right-top">
+        <div class="panel-title" style="margin-bottom:8px;">📍 Active Route</div>
+        <div id="route-panel" class="card">
+          <div style="color:var(--text-dim);font-size:0.75rem;">Calculating route…</div>
+        </div>
+      </div>
+
+      <div class="right-bottom scroll-section">
+
+        <!-- Selected edge info -->
+        <div>
+          <div class="section-header">🗺 Selected Road</div>
+          <div id="selected-edge-info" style="margin-top:6px;">Click a road on the map to inspect it.</div>
+          <div class="action-btns" style="margin-top:8px;">
+            <button id="block-selected-btn"   class="btn btn-danger">🧟 Block</button>
+            <button id="unblock-selected-btn" class="btn btn-success">✅ Unblock</button>
+          </div>
+          <p class="click-tip" style="margin-top:4px;">← Use these on the road you clicked in the map</p>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Threat Controls -->
+        <div class="section-header">⚠ Threat Simulation</div>
+
+        <div class="card control-group">
+          <div class="card-title">🧟 Block Road (Zombie Horde)</div>
+          <label for="block-road-select">Select Road</label>
+          <select id="block-road-select">
+            <option value="">— Select Road —</option>
+          </select>
+          <button id="block-btn" class="btn btn-danger btn-full">Block Road</button>
+        </div>
+
+        <div class="card control-group">
+          <div class="card-title">✅ Reopen Road</div>
+          <label for="unblock-road-select">Select Road</label>
+          <select id="unblock-road-select">
+            <option value="">— Select Road —</option>
+          </select>
+          <button id="unblock-btn" class="btn btn-success btn-full">Reopen Road</button>
+        </div>
+
+        <div class="card control-group">
+          <div class="card-title">☢ Adjust Threat Level</div>
+          <label for="threat-road-select">Select Road</label>
+          <div class="control-row">
+            <select id="threat-road-select" style="flex:1">
+              <option value="">— Select Road —</option>
+            </select>
+            <input id="threat-level-input" type="number" min="0" max="10" value="5" title="Threat level 0-10">
+          </div>
+          <button id="threat-btn" class="btn btn-warn btn-full">Set Threat</button>
+        </div>
+
+        <div class="card control-group">
+          <div class="card-title">📦 Supply Cache</div>
+          <label for="cache-node-select">Deplete Cache at</label>
+          <select id="cache-node-select">
+            <option value="">— Select Cache —</option>
+          </select>
+          <button id="deplete-cache-btn" class="btn btn-ghost btn-full">Deplete Cache</button>
+        </div>
+
+        <div class="card" style="border-color:rgba(255,23,68,0.3);">
+          <div class="card-title" style="color:var(--danger);">⚡ Chaos Mode</div>
+          <p style="font-size:0.7rem;color:var(--text-sec);margin-bottom:8px;">Block beacon approaches to test no-route fallback.</p>
+          <button id="chaos-btn" class="btn btn-danger btn-full">⚡ Trigger Chaos</button>
+        </div>
+
+        <hr class="section-divider">
+        <!-- Event Log -->
+        <div class="section-header">📋 Event Log</div>
+        <div class="log-container" id="event-log">
+          <div class="log-entry log-info"><span class="log-time">[00:00]</span><span class="log-msg">System initialised.</span></div>
+        </div>
+
+      </div><!-- /right-bottom -->
+    </aside><!-- /right-panel -->
+
+  </div><!-- /main-content -->
+</div><!-- /app-shell -->
+
+<!-- Scripts -->
+<script src="graph.js"></script>
+<script src="state.js"></script>
+<script src="renderer.js"></script>
+<script src="threat-sim.js"></script>
+<script src="app.js"></script>
+
+<!-- Service Worker Registration -->
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(err => {
+      console.warn('SW registration failed (offline features may not work):', err);
+    });
+  }
+</script>
+</body>
+</html>
